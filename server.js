@@ -8,7 +8,21 @@ const crypto = require("crypto");
 const app = express();
 app.use(express.json());
 
-app.use(cors()); // depois podemos restringir
+app.use(cors()); // se quiser, depois a gente restringe por domínio
+
+// ✅ CHAVE ÚNICA (seta no Railway: Variables -> API_KEY)
+function requireApiKey(req, res, next) {
+  const key = req.header("x-api-key");
+
+  // Se você esquecer de configurar API_KEY no Railway, não bloqueia (pra não quebrar)
+  if (!process.env.API_KEY) return next();
+
+  if (key !== process.env.API_KEY) {
+    return res.status(401).json({ status: "error", message: "API key inválida" });
+  }
+
+  next();
+}
 
 const downloadsDir = path.join(__dirname, "downloads");
 if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir, { recursive: true });
@@ -61,7 +75,7 @@ function runNext() {
     }
 
     const files = fs.readdirSync(downloadsDir);
-    const file = files.find(f => f.startsWith(id));
+    const file = files.find((f) => f.startsWith(id));
 
     if (!file) {
       jobs[id] = { status: "error", message: "Arquivo não encontrado" };
@@ -80,11 +94,13 @@ function runNext() {
   });
 }
 
-app.post("/convert", (req, res) => {
+// ✅ ROTAS PROTEGIDAS COM CHAVE
+app.post("/convert", requireApiKey, (req, res) => {
   const { url, format } = req.body;
 
   if (!url) return res.status(400).json({ status: "error", message: "URL obrigatória" });
-  if (!["mp3", "mp4"].includes(format)) return res.status(400).json({ status: "error", message: "Formato inválido" });
+  if (!["mp3", "mp4"].includes(format))
+    return res.status(400).json({ status: "error", message: "Formato inválido" });
 
   const ytRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/;
   if (!ytRegex.test(url)) return res.status(400).json({ status: "error", message: "URL inválida" });
@@ -100,13 +116,18 @@ app.post("/convert", (req, res) => {
   res.json({ status: "processing", id });
 });
 
-app.get("/status/:id", (req, res) => {
+app.get("/status/:id", requireApiKey, (req, res) => {
   const job = jobs[req.params.id];
   if (!job) return res.status(404).json({ status: "error", message: "Job não encontrado" });
   res.json(job);
 });
 
-app.use("/download", express.static(downloadsDir));
+// ✅ Download protegido (precisa mandar x-api-key também)
+app.get("/download/:file", requireApiKey, (req, res) => {
+  const filePath = path.join(downloadsDir, req.params.file);
+  if (!fs.existsSync(filePath)) return res.status(404).send("Arquivo não encontrado");
+  res.download(filePath);
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("API rodando na porta", PORT));
