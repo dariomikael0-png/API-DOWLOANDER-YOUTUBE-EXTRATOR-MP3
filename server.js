@@ -8,13 +8,13 @@ const crypto = require("crypto");
 const app = express();
 app.use(express.json());
 
-app.use(cors()); // se quiser, depois a gente restringe por domínio
+app.use(cors()); // depois dá pra restringir por domínio
 
 // ✅ CHAVE ÚNICA (seta no Railway: Variables -> API_KEY)
 function requireApiKey(req, res, next) {
   const key = req.header("x-api-key");
 
-  // Se você esquecer de configurar API_KEY no Railway, não bloqueia (pra não quebrar)
+  // Se não tiver API_KEY configurada, não bloqueia (pra não quebrar)
   if (!process.env.API_KEY) return next();
 
   if (key !== process.env.API_KEY) {
@@ -94,7 +94,7 @@ function runNext() {
   });
 }
 
-// ✅ ROTAS PROTEGIDAS COM CHAVE
+// ✅ PROTEGIDO
 app.post("/convert", requireApiKey, (req, res) => {
   const { url, format } = req.body;
 
@@ -116,18 +116,15 @@ app.post("/convert", requireApiKey, (req, res) => {
   res.json({ status: "processing", id });
 });
 
+// ✅ PROTEGIDO
 app.get("/status/:id", requireApiKey, (req, res) => {
   const job = jobs[req.params.id];
   if (!job) return res.status(404).json({ status: "error", message: "Job não encontrado" });
   res.json(job);
 });
 
-// ✅ Download protegido (precisa mandar x-api-key também)
-app.get("/download/:file", requireApiKey, (req, res) => {
-  const filePath = path.join(downloadsDir, req.params.file);
-  if (!fs.existsSync(filePath)) return res.status(404).send("Arquivo não encontrado");
-  res.download(filePath);
-});
+// ✅ DOWNLOAD LIVRE (SEM CHAVE)
+app.use("/download", express.static(downloadsDir));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("API rodando na porta", PORT));
